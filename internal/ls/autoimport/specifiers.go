@@ -19,7 +19,7 @@ func (v *View) GetModuleSpecifier(
 		return string(export.ModuleID), modulespecifiers.ResultKindAmbient
 	}
 
-	if export.PackageName != "" {
+	if export.PackageName != "" && !v.isSamePackageAsImportingFile(export) {
 		if entrypoints, ok := v.registry.entrypoints[export.Path]; ok {
 			for _, entrypoint := range entrypoints {
 				if entrypoint.IncludeConditions.IsSubsetOf(v.conditions) && !v.conditions.Intersects(entrypoint.ExcludeConditions) {
@@ -72,4 +72,19 @@ func (v *View) GetModuleSpecifier(
 	}
 	cache.Store(export.Path, "")
 	return "", modulespecifiers.ResultKindNone
+}
+
+// isSamePackageAsImportingFile checks whether the export's file belongs to the
+// same package as the importing file. When true, package-relative entrypoints
+// (e.g. "web/lib/foo") are skipped in favour of tsconfig paths mappings (e.g.
+// "@/lib/foo"), since importing your own package by name is rarely desirable.
+func (v *View) isSamePackageAsImportingFile(export *Export) bool {
+	importingDir := string(v.importingFile.Path().GetDirectoryPath())
+	exportDir := string(export.Path.GetDirectoryPath())
+	importingPkgDir := v.program.GetNearestAncestorDirectoryWithPackageJson(importingDir)
+	if importingPkgDir == "" {
+		return false
+	}
+	exportPkgDir := v.program.GetNearestAncestorDirectoryWithPackageJson(exportDir)
+	return exportPkgDir != "" && importingPkgDir == exportPkgDir
 }
